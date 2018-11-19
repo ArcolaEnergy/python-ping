@@ -4,7 +4,8 @@
 setup.py
 Distutils setup script.
 
-Copyright (c) 2010 Pierre Bourdon <delroth@gmail.com>
+Copyright (c) 2010 Pierre Bourdon <delroth@gmail.com>,
+Copyright (c) 2018 Arcola Energy / Nick Cripps <nick@arcolaenergy.com> / <nick.cripps@gmail.com>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 2 as
@@ -29,14 +30,14 @@ setup(
         'ping'
     ],
 
-    author="Pierre Bourdon",
-    author_email="delroth@gmail.com",
+    author="Nick Cripps",
+    author_email="nick.cripps@gmail.com",
     description="An implementation of ICMP ping in Python",
     long_description=open('README').read(),
     license="GPL2",
     keywords="ping icmp network latency",
-    url="http://bitbucket.org/delroth/python-ping/",
-    download_url="http://bitbucket.org/delroth/python-ping/downloads/python-ping-%s.tar.gz" % __version__,
+    url="https://github.com/ArcolaEnergy/python-ping",
+    download_url="https://github.com/ArcolaEnergy/python-ping/releases/download/%s/python-ping-%s.tar.gz" % __version__,
 
     classifiers=[
         "Development Status :: 5 - Production/Stable",

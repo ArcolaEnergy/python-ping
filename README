@@ -1,4 +1,4 @@
-This library is a fork of Pierre Bourdon <delroth@gmail.com>'s for of George 
+This library is a fork of Pierre Bourdon <delroth@gmail.com>'s fork of George 
 Notaras' python-ping library, which is an implementation of the standard ICMP 
 ping in pure Python.
 

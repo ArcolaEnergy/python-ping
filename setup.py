@@ -37,7 +37,7 @@ setup(
     license="GPL2",
     keywords="ping icmp network latency",
     url="https://github.com/ArcolaEnergy/python-ping",
-    download_url="https://github.com/ArcolaEnergy/python-ping/releases/download/%s/python-ping-%s.tar.gz" % __version__,
+    download_url="https://github.com/ArcolaEnergy/python-ping/releases/download/%s/python-ping-%s.tar.gz" % (__version__, __version__),
 
     classifiers=[
         "Development Status :: 5 - Production/Stable",

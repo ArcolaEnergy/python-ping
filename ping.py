@@ -112,10 +112,10 @@ import time
 import sys
 
 # From /usr/include/linux/icmp.h; your mileage may vary.
-ICMP_ECHO_REQUEST = 8  # Seems to be the same on Solaris.
+_ICMP_ECHO_REQUEST = 8  # Seems to be the same on Solaris.
 
 
-def checksum(source_bytes):
+def _checksum(source_bytes):
     """
     I'm not too confident that this is right but testing seems
     to suggest that it gives the same answers as in_cksum in ping.c
@@ -142,7 +142,7 @@ def checksum(source_bytes):
     return answer
 
 
-def receive_one_ping(my_socket, packet_id, timeout):
+def _receive_one_ping(my_socket, packet_id, timeout):
     """
     Receive the ping from the socket.
     """
@@ -170,7 +170,7 @@ def receive_one_ping(my_socket, packet_id, timeout):
             return
 
 
-def send_one_ping(my_socket, dest_addr, packet_id, packet_size):
+def _send_one_ping(my_socket, dest_addr, packet_id, packet_size):
     """
     Send one ping to the given >dest_addr<.
     """
@@ -183,52 +183,56 @@ def send_one_ping(my_socket, dest_addr, packet_id, packet_size):
     my_checksum = 0
 
     # Make a dummy header with a 0 checksum.
-    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, my_checksum, packet_id, 1)
+    header = struct.pack("bbHHh", _ICMP_ECHO_REQUEST, 0, my_checksum, packet_id, 1)
     n_bytes = struct.calcsize("d")
     data = ((packet_size - n_bytes) * "Q").encode('ascii', errors='strict')
     data = struct.pack("d", time.time()) + data
 
     # Calculate the checksum on the data and the dummy header.
-    my_checksum = checksum(header + data)
+    my_checksum = _checksum(header + data)
 
     # Now that we have the right checksum, we put that in. It's just easier
     # to make up a new header than to stuff it into the dummy.
     header = struct.pack(
-        "bbHHh", ICMP_ECHO_REQUEST, 0, socket.htons(my_checksum), packet_id, 1
+        "bbHHh", _ICMP_ECHO_REQUEST, 0, socket.htons(my_checksum), packet_id, 1
     )
     packet = header + data
     my_socket.sendto(packet, (dest_addr, 1)) # Don't know about the 1
 
 
-def do_one(dest_addr, timeout, packet_size, interface_name):
+def do_one_ping(dest_addr, timeout=2, packet_size=64, interface_name=''):
     """
+    Send one ping with `packet_size' size to `dest_addr' with
+    the given `timeout' using `interface_name'.
+    If interface_name is an empty string or None, use default interface.
     Returns either the delay (in seconds) or none on timeout.
     """
     icmp = socket.getprotobyname("icmp")
     try:
-        my_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
-    except socket.error as socket_error:
-        (errno, msg) = socket_error.args
-        if errno == 1:
-            # Operation not permitted
-            msg = msg + (
-                " - Note that ICMP messages can only be sent from processes"
-                " running as root or with CAP_NET_RAW."
-            )
-            raise socket.error(msg)
-        raise  # raise the original error
-    if interface_name not in [None, '']:
-        # no need to check for permissions, since we must have had them to create the socket
-        my_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,
-                             str(interface_name + '\0')
-                             .encode(sys.getdefaultencoding(), errors='strict'))
+        try:
+            my_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
+        except socket.error as socket_error:
+            (errno, msg) = socket_error.args
+            if errno == 1:
+                # Operation not permitted
+                msg = msg + (
+                    " - Note that ICMP messages can only be sent from processes"
+                    " running as root or with CAP_NET_RAW."
+                )
+                raise socket.error(msg)
+            raise  # raise the original error
+        if interface_name not in [None, '']:
+            # no need to check for permissions, since we must have had them to create the socket
+            my_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,
+                                 str(interface_name + '\0')
+                                 .encode(sys.getdefaultencoding(), errors='strict'))
 
-    my_id = os.getpid() & 0xFFFF
+        my_id = os.getpid() & 0xFFFF
 
-    send_one_ping(my_socket, dest_addr, my_id, packet_size)
-    delay = receive_one_ping(my_socket, my_id, timeout)
-
-    my_socket.close()
+        _send_one_ping(my_socket, dest_addr, my_id, packet_size)
+        delay = _receive_one_ping(my_socket, my_id, timeout)
+    finally:
+        my_socket.close()
     return delay
 
 
@@ -241,13 +245,13 @@ def verbose_ping(dest_addr, timeout=2, count=4, packet_size=64, interface_name='
     for i in range(count):
         print("ping %s with ..." % dest_addr, end='')
         try:
-            delay = do_one(dest_addr, timeout, packet_size, interface_name)
+            delay = do_one_ping(dest_addr, timeout, packet_size, interface_name)
         except socket.gaierror as e:
             print("failed. (socket error: '%s')" % str(e))
             break
 
         if delay is None:
-            print("failed. (timeout within %ssec.)" % timeout)
+            print("failed. (timeout within %dsec.)" % timeout)
         else:
             delay = delay * 1000
             print("get ping in %0.4fms" % delay)
@@ -257,7 +261,7 @@ def verbose_ping(dest_addr, timeout=2, count=4, packet_size=64, interface_name='
 def quiet_ping(dest_addr, timeout=2, count=4, packet_size=64, interface_name=''):
     """
     Send `count' ping with `packet_size' size to `dest_addr' with
-    the given `timeout' using `interface_name' and display the result.
+    the given `timeout' using `interface_name'.
     Returns `percent' lost packages, `max' round trip time
     and `avrg' round trip time.
     If interface_name is an empty string or None, use default interface.
@@ -268,7 +272,7 @@ def quiet_ping(dest_addr, timeout=2, count=4, packet_size=64, interface_name='')
 
     for i in range(count):
         try:
-            delay = do_one(dest_addr, timeout, packet_size, interface_name)
+            delay = do_one_ping(dest_addr, timeout, packet_size, interface_name)
         except socket.gaierror as e:
             print("failed. (socket error: '%s')" % e[1])
             break
@@ -294,3 +298,8 @@ if __name__ == '__main__':
     verbose_ping("a-test-url-that-is-not-available.com")
     verbose_ping("192.168.1.1")
     verbose_ping("192.168.4.1", interface_name='eth1')
+    count = 10
+    host = 'google.com'
+    percent_lost, mrtt, artt = quiet_ping(host, count=count)
+    print('Results for %d pings to %s: %.3f%% lost, %.3fms average, %.3fms max' %
+          (count, host, percent_lost, artt, mrtt))

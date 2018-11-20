@@ -96,11 +96,11 @@
 
     November 20, 2018
     -----------------
-    Fixed issue in setup.py and typo in README and bumped version to 0.3.1
+    Fixed issue in setup.py and typo in README
 
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3"
 
 import os
 import select

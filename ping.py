@@ -94,9 +94,13 @@
     Converted to Python 3 using 2to3 from Python 3.6 with manual changes
     Bumped version to 0.3
 
+    November 20, 2018
+    -----------------
+    Fixed issue in setup.py and typo in README and bumped version to 0.3.1
+
 """
 
-__version__ = "0.3"
+__version__ = "0.3.1"
 
 import os
 import select

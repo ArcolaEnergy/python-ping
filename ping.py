@@ -4,7 +4,7 @@
     A pure python ping implementation using raw socket.
 
 
-    Note that ICMP messages can only be sent from processes running as root.
+    Note that ICMP messages can only be sent from processes running as root or with CAP_NET_RAW.
 
 
     Derived from ping.c distributed in Linux's netkit. That code is
@@ -97,16 +97,19 @@
     November 20, 2018
     -----------------
     Code style improvements
+    Added support for specifying an interface to use
+    Bumped version to 0.4
 
 """
 
-__version__ = "0.3"
+__version__ = "0.4"
 
 import os
 import select
 import socket
 import struct
 import time
+import sys
 
 # From /usr/include/linux/icmp.h; your mileage may vary.
 ICMP_ECHO_REQUEST = 8  # Seems to be the same on Solaris.
@@ -197,7 +200,7 @@ def send_one_ping(my_socket, dest_addr, packet_id, packet_size):
     my_socket.sendto(packet, (dest_addr, 1)) # Don't know about the 1
 
 
-def do_one(dest_addr, timeout, packet_size):
+def do_one(dest_addr, timeout, packet_size, interface_name):
     """
     Returns either the delay (in seconds) or none on timeout.
     """
@@ -214,6 +217,11 @@ def do_one(dest_addr, timeout, packet_size):
             )
             raise socket.error(msg)
         raise  # raise the original error
+    if interface_name not in [None, '']:
+        # no need to check for permissions, since we must have had them to create the socket
+        my_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,
+                             str(interface_name + '\0')
+                             .encode(sys.getdefaultencoding(), errors='strict'))
 
     my_id = os.getpid() & 0xFFFF
 
@@ -224,15 +232,16 @@ def do_one(dest_addr, timeout, packet_size):
     return delay
 
 
-def verbose_ping(dest_addr, timeout=2, count=4, packet_size=64):
+def verbose_ping(dest_addr, timeout=2, count=4, packet_size=64, interface_name=''):
     """
     Send `count' ping with `packet_size' size to `dest_addr' with
-    the given `timeout' and display the result.
+    the given `timeout' using interface_name and display the result.
+    If interface_name is an empty string or None, use default interface.
     """
     for i in range(count):
         print("ping %s with ..." % dest_addr, end='')
         try:
-            delay = do_one(dest_addr, timeout, packet_size)
+            delay = do_one(dest_addr, timeout, packet_size, interface_name)
         except socket.gaierror as e:
             print("failed. (socket error: '%s')" % str(e))
             break
@@ -245,12 +254,13 @@ def verbose_ping(dest_addr, timeout=2, count=4, packet_size=64):
     print()
 
 
-def quiet_ping(dest_addr, timeout=2, count=4, packet_size=64):
+def quiet_ping(dest_addr, timeout=2, count=4, packet_size=64, interface_name=''):
     """
     Send `count' ping with `packet_size' size to `dest_addr' with
-    the given `timeout' and display the result.
+    the given `timeout' using `interface_name' and display the result.
     Returns `percent' lost packages, `max' round trip time
     and `avrg' round trip time.
+    If interface_name is an empty string or None, use default interface.
     """
     mrtt = None
     artt = None
@@ -258,7 +268,7 @@ def quiet_ping(dest_addr, timeout=2, count=4, packet_size=64):
 
     for i in range(count):
         try:
-            delay = do_one(dest_addr, timeout, packet_size)
+            delay = do_one(dest_addr, timeout, packet_size, interface_name)
         except socket.gaierror as e:
             print("failed. (socket error: '%s')" % e[1])
             break
@@ -283,3 +293,4 @@ if __name__ == '__main__':
     verbose_ping("google.com")
     verbose_ping("a-test-url-that-is-not-available.com")
     verbose_ping("192.168.1.1")
+    verbose_ping("192.168.4.1", interface_name='eth1')

@@ -94,6 +94,10 @@
     Converted to Python 3 using 2to3 from Python 3.6 with manual changes
     Bumped version to 0.3
 
+    November 20, 2018
+    -----------------
+    Code style improvements
+
 """
 
 __version__ = "0.3"
@@ -102,41 +106,40 @@ import os
 import select
 import socket
 import struct
-import sys
 import time
 
-# From /usr/include/linux/icmp.h; your milage may vary.
-ICMP_ECHO_REQUEST = 8 # Seems to be the same on Solaris.
+# From /usr/include/linux/icmp.h; your mileage may vary.
+ICMP_ECHO_REQUEST = 8  # Seems to be the same on Solaris.
 
 
-def checksum(source_string):
+def checksum(source_bytes):
     """
     I'm not too confident that this is right but testing seems
     to suggest that it gives the same answers as in_cksum in ping.c
     """
-    sum = 0
-    count_to = (len(source_string) // 2) * 2
+    chk_sum = 0
+    count_to = (len(source_bytes) // 2) * 2
     for count in range(0, count_to, 2):
-        this = source_string[count + 1] * 256 + source_string[count]
-        sum = sum + this
-        sum = sum & 0xffffffff # Necessary?
+        this = source_bytes[count + 1] * 256 + source_bytes[count]
+        chk_sum = chk_sum + this
+        chk_sum = chk_sum & 0xffffffff  # Necessary?
 
-    if count_to < len(source_string):
-        sum = sum + source_string[len(source_string) - 1]
-        sum = sum & 0xffffffff # Necessary?
+    if count_to < len(source_bytes):
+        chk_sum = chk_sum + source_bytes[len(source_bytes) - 1]
+        chk_sum = chk_sum & 0xffffffff  # Necessary?
 
-    sum = (sum >> 16) + (sum & 0xffff)
-    sum = sum + (sum >> 16)
-    answer = ~sum
+    chk_sum = (chk_sum >> 16) + (chk_sum & 0xffff)
+    chk_sum = chk_sum + (chk_sum >> 16)
+    answer = ~chk_sum
     answer = answer & 0xffff
 
-    # Swap bytes. Bugger me if I know why.
+    # Swap bytes.
     answer = answer >> 8 | (answer << 8 & 0xff00)
 
     return answer
 
 
-def receive_one_ping(my_socket, id, timeout):
+def receive_one_ping(my_socket, packet_id, timeout):
     """
     Receive the ping from the socket.
     """
@@ -145,18 +148,18 @@ def receive_one_ping(my_socket, id, timeout):
         started_select = time.time()
         what_ready = select.select([my_socket], [], [], time_left)
         how_long_in_select = (time.time() - started_select)
-        if what_ready[0] == []: # Timeout
+        if what_ready[0] == []:  # Timeout
             return
 
         time_received = time.time()
         received_packet, addr = my_socket.recvfrom(1024)
-        icmpHeader = received_packet[20:28]
-        type, code, checksum, packet_id, sequence = struct.unpack(
-            "bbHHh", icmpHeader
+        icmp_header = received_packet[20:28]
+        icmp_type, code, checksum_field, received_packet_id, sequence = struct.unpack(
+            "bbHHh", icmp_header
         )
-        if packet_id == id:
-            bytes = struct.calcsize("d")
-            time_sent = struct.unpack("d", received_packet[28:28 + bytes])[0]
+        if received_packet_id == packet_id:
+            n_bytes = struct.calcsize("d")
+            time_sent = struct.unpack("d", received_packet[28:28 + n_bytes])[0]
             return time_received - time_sent
 
         time_left = time_left - how_long_in_select
@@ -164,23 +167,23 @@ def receive_one_ping(my_socket, id, timeout):
             return
 
 
-def send_one_ping(my_socket, dest_addr, id, psize):
+def send_one_ping(my_socket, dest_addr, packet_id, packet_size):
     """
     Send one ping to the given >dest_addr<.
     """
-    dest_addr  =  socket.gethostbyname(dest_addr)
+    dest_addr = socket.gethostbyname(dest_addr)
 
     # Remove header size from packet size
-    psize = psize - 8
+    packet_size = packet_size - 8
 
     # Header is type (8), code (8), checksum (16), id (16), sequence (16)
     my_checksum = 0
 
-    # Make a dummy heder with a 0 checksum.
-    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, my_checksum, id, 1)
-    bytes = struct.calcsize("d")
-    data = (psize - bytes) * "Q"
-    data = struct.pack("d", time.time()) + data.encode('ascii', errors='strict')
+    # Make a dummy header with a 0 checksum.
+    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, my_checksum, packet_id, 1)
+    n_bytes = struct.calcsize("d")
+    data = ((packet_size - n_bytes) * "Q").encode('ascii', errors='strict')
+    data = struct.pack("d", time.time()) + data
 
     # Calculate the checksum on the data and the dummy header.
     my_checksum = checksum(header + data)
@@ -188,13 +191,13 @@ def send_one_ping(my_socket, dest_addr, id, psize):
     # Now that we have the right checksum, we put that in. It's just easier
     # to make up a new header than to stuff it into the dummy.
     header = struct.pack(
-        "bbHHh", ICMP_ECHO_REQUEST, 0, socket.htons(my_checksum), id, 1
+        "bbHHh", ICMP_ECHO_REQUEST, 0, socket.htons(my_checksum), packet_id, 1
     )
     packet = header + data
     my_socket.sendto(packet, (dest_addr, 1)) # Don't know about the 1
 
 
-def do_one(dest_addr, timeout, psize):
+def do_one(dest_addr, timeout, packet_size):
     """
     Returns either the delay (in seconds) or none on timeout.
     """
@@ -207,61 +210,60 @@ def do_one(dest_addr, timeout, psize):
             # Operation not permitted
             msg = msg + (
                 " - Note that ICMP messages can only be sent from processes"
-                " running as root."
+                " running as root or with CAP_NET_RAW."
             )
             raise socket.error(msg)
-        raise # raise the original error
+        raise  # raise the original error
 
     my_id = os.getpid() & 0xFFFF
 
-    send_one_ping(my_socket, dest_addr, my_id, psize)
+    send_one_ping(my_socket, dest_addr, my_id, packet_size)
     delay = receive_one_ping(my_socket, my_id, timeout)
 
     my_socket.close()
     return delay
 
 
-def verbose_ping(dest_addr, timeout = 2, count = 4, psize = 64):
+def verbose_ping(dest_addr, timeout=2, count=4, packet_size=64):
     """
-    Send `count' ping with `psize' size to `dest_addr' with
+    Send `count' ping with `packet_size' size to `dest_addr' with
     the given `timeout' and display the result.
     """
     for i in range(count):
-        print("ping %s with ..." % dest_addr, end=' ')
+        print("ping %s with ..." % dest_addr, end='')
         try:
-            delay  =  do_one(dest_addr, timeout, psize)
+            delay = do_one(dest_addr, timeout, packet_size)
         except socket.gaierror as e:
             print("failed. (socket error: '%s')" % str(e))
             break
 
-        if delay  ==  None:
+        if delay is None:
             print("failed. (timeout within %ssec.)" % timeout)
         else:
-            delay  =  delay * 1000
+            delay = delay * 1000
             print("get ping in %0.4fms" % delay)
     print()
 
 
-def quiet_ping(dest_addr, timeout = 2, count = 4, psize = 64):
+def quiet_ping(dest_addr, timeout=2, count=4, packet_size=64):
     """
-    Send `count' ping with `psize' size to `dest_addr' with
+    Send `count' ping with `packet_size' size to `dest_addr' with
     the given `timeout' and display the result.
     Returns `percent' lost packages, `max' round trip time
     and `avrg' round trip time.
     """
     mrtt = None
     artt = None
-    lost = 0
     plist = []
 
     for i in range(count):
         try:
-            delay = do_one(dest_addr, timeout, psize)
+            delay = do_one(dest_addr, timeout, packet_size)
         except socket.gaierror as e:
             print("failed. (socket error: '%s')" % e[1])
             break
 
-        if delay != None:
+        if delay is not None:
             delay = delay * 1000
             plist.append(delay)
 
@@ -275,8 +277,9 @@ def quiet_ping(dest_addr, timeout = 2, count = 4, psize = 64):
 
     return percent_lost, mrtt, artt
 
+
 if __name__ == '__main__':
     verbose_ping("heise.de")
     verbose_ping("google.com")
-    verbose_ping("a-test-url-taht-is-not-available.com")
+    verbose_ping("a-test-url-that-is-not-available.com")
     verbose_ping("192.168.1.1")
